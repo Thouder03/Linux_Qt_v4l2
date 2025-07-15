@@ -34,7 +34,7 @@ int VideoDevice::close_device()
     return 0;
 }
 
-int VideoDevice::init_device()
+int VideoDevice::init_device(int width,int height)
 {
     v4l2_capability cap;
     v4l2_cropcap cropcap;
@@ -98,8 +98,8 @@ int VideoDevice::init_device()
     CLEAR(fmt);
 
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    fmt.fmt.pix.width = 320;
-    fmt.fmt.pix.height = 240;
+    fmt.fmt.pix.width = width;
+    fmt.fmt.pix.height = height;
     fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
     fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
 

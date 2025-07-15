@@ -25,8 +25,8 @@ void StatusIndicator::paintEvent(QPaintEvent *event)
 
     // 绘制圆形背景
     painter.setBrush(QBrush(getStatusColor()));
-    painter.setPen(QPen(Qt::black, 2));
-    painter.drawEllipse(5, 5, 20, 20);
+    painter.setPen(QPen(Qt::black, 1));
+    painter.drawEllipse(5, 5, 10, 10);
 }
 
 QColor StatusIndicator::getStatusColor() const
@@ -111,7 +111,6 @@ Widget::~Widget()
     cleanup_resources();
     delete ui;
 }
-
 void Widget::setupUI()
 {
     // 创建控件
@@ -121,78 +120,128 @@ void Widget::setupUI()
     btn_pause = new QPushButton("Pause", this);
     btn_stop_replay = new QPushButton("Stop", this);
     btn_live = new QPushButton("Live", this);
-    btn_select_file = new QPushButton("Select File", this);
+
+    // 新的文件选择按钮
+    btn_prev_file = new QPushButton("◀", this);
+    btn_next_file = new QPushButton("▶", this);
+    lbl_file_info = new QLabel("No files", this);
+
+    // 设置按钮尺寸更紧凑
+    btn_rec->setFixedSize(40, 25);
+    btn_end->setFixedSize(40, 25);
+    btn_replay->setFixedSize(50, 25);
+    btn_pause->setFixedSize(45, 25);
+    btn_stop_replay->setFixedSize(40, 25);
+    btn_live->setFixedSize(40, 25);
+    btn_prev_file->setFixedSize(25, 25);
+    btn_next_file->setFixedSize(25, 25);
 
     progress_slider = new QSlider(Qt::Horizontal, this);
     progress_slider->setEnabled(false);
+    progress_slider->setFixedHeight(20);
 
-    lbl_progress = new QLabel("0 / 0", this);
+    lbl_progress = new QLabel("0/0", this);
+    lbl_progress->setFixedWidth(40);
+
     lbl_status = new QLabel("Ready", this);
+    lbl_status->setFixedHeight(40);
+
     lbl_video_display = new QLabel(this);
-    lbl_video_display->setMinimumSize(320, 240);
+    lbl_video_display->setFixedSize(320, 240);  // 固定视频显示区域
     lbl_video_display->setStyleSheet("border: 1px solid gray;");
 
-    combo_history_files = new QComboBox(this);
-    combo_history_files->setMinimumWidth(200);
+    lbl_file_info->setFixedWidth(140);
+    lbl_file_info->setStyleSheet("font-size: 10px;");
 
     // 创建状态指示器
     status_indicator = new StatusIndicator(this);
+    status_indicator->setFixedSize(20, 20);
 
-    // 创建布局
+    // 创建主布局
     main_layout = new QVBoxLayout(this);
+    main_layout->setSpacing(2);
+    main_layout->setContentsMargins(2, 2, 2, 2);
+
+    // 创建上部区域：视频显示 + 右侧按钮
+    QHBoxLayout *top_layout = new QHBoxLayout();
+    top_layout->setSpacing(5);
 
     // 视频显示区域
-    main_layout->addWidget(lbl_video_display);
+    top_layout->addWidget(lbl_video_display);
 
-    // 控制按钮组
-    control_group = new QGroupBox("Controls", this);
-    control_layout = new QHBoxLayout(control_group);
-    control_layout->addWidget(btn_live);
-    control_layout->addWidget(btn_rec);
-    control_layout->addWidget(btn_end);
-    control_layout->addWidget(btn_replay);
-    control_layout->addWidget(btn_pause);
-    control_layout->addWidget(btn_stop_replay);
-    control_layout->addStretch();
+    // 右侧按钮区域
+    QVBoxLayout *right_buttons_layout = new QVBoxLayout();
+    right_buttons_layout->setSpacing(3);
 
-    // 状态指示器布局（替换FPS设置）
+    // 状态指示器
     QHBoxLayout *status_layout = new QHBoxLayout();
     status_layout->addWidget(new QLabel("Status:", this));
     status_layout->addWidget(status_indicator);
     status_layout->addStretch();
-    control_layout->addLayout(status_layout);
+    right_buttons_layout->addLayout(status_layout);
 
-    main_layout->addWidget(control_group);
+    // 主要控制按钮
+    QHBoxLayout *main_controls = new QHBoxLayout();
+    main_controls->setSpacing(2);
+    main_controls->addWidget(btn_live);
+    main_controls->addWidget(btn_rec);
+    main_controls->addWidget(btn_end);
+    right_buttons_layout->addLayout(main_controls);
 
-    // 进度条组
-    progress_group = new QGroupBox("Progress", this);
-    progress_layout = new QHBoxLayout(progress_group);
+    // 回放控制按钮
+    QHBoxLayout *replay_controls = new QHBoxLayout();
+    replay_controls->setSpacing(2);
+    replay_controls->addWidget(btn_replay);
+    replay_controls->addWidget(btn_pause);
+    replay_controls->addWidget(btn_stop_replay);
+    right_buttons_layout->addLayout(replay_controls);
+
+    // 文件选择控件
+    QHBoxLayout *file_controls = new QHBoxLayout();
+    file_controls->setSpacing(2);
+    file_controls->addWidget(btn_prev_file);
+    file_controls->addWidget(btn_next_file);
+    right_buttons_layout->addLayout(file_controls);
+
+    // 文件信息显示
+    right_buttons_layout->addWidget(lbl_file_info);
+
+    // 将状态栏放到右侧
+    lbl_status->setFixedWidth(140);
+    lbl_status->setWordWrap(true);
+    lbl_status->setStyleSheet("font-size: 10px; border: 1px solid gray; padding: 2px;");
+    right_buttons_layout->addWidget(lbl_status);
+
+    right_buttons_layout->addStretch();
+
+    top_layout->addLayout(right_buttons_layout);
+    main_layout->addLayout(top_layout);
+
+    // 进度条区域
+    QHBoxLayout *progress_layout = new QHBoxLayout();
+    progress_layout->setSpacing(5);
     progress_layout->addWidget(progress_slider);
     progress_layout->addWidget(lbl_progress);
-    main_layout->addWidget(progress_group);
-
-    // 文件选择组
-    file_group = new QGroupBox("History Files", this);
-    file_layout = new QHBoxLayout(file_group);
-    file_layout->addWidget(combo_history_files);
-    file_layout->addWidget(btn_select_file);
-    main_layout->addWidget(file_group);
-
-    // 状态栏
-    main_layout->addWidget(lbl_status);
+    main_layout->addLayout(progress_layout);
 
     // 初始按钮状态
     btn_end->setEnabled(false);
     btn_pause->setEnabled(false);
     btn_stop_replay->setEnabled(false);
+    btn_prev_file->setEnabled(false);
+    btn_next_file->setEnabled(false);
+
+    // 初始化文件选择
+    current_file_index = 0;
 
     setLayout(main_layout);
-    setWindowTitle("Video Capture & Replay System");
-    resize(480, 272);
+    setWindowTitle("Video System");
+    setFixedSize(480, 272);  // 固定窗口大小
 }
-
+// 修改setupConnections()函数，添加新按钮的连接
 void Widget::setupConnections()
 {
+    // 原有连接保持不变...
     // 视频设备错误信号
     connect(cam_vd, &VideoDevice::display_error, this, &Widget::slot_display_error);
 
@@ -203,7 +252,10 @@ void Widget::setupConnections()
     connect(btn_pause, &QPushButton::clicked, this, &Widget::slot_pause_replay);
     connect(btn_stop_replay, &QPushButton::clicked, this, &Widget::slot_stop_replay);
     connect(btn_live, &QPushButton::clicked, this, &Widget::slot_live_capture);
-    connect(btn_select_file, &QPushButton::clicked, this, &Widget::slot_select_history_file);
+
+    // 新的文件选择按钮
+    connect(btn_prev_file, &QPushButton::clicked, this, &Widget::slot_prev_file);
+    connect(btn_next_file, &QPushButton::clicked, this, &Widget::slot_next_file);
 
     // 进度条信号
     connect(progress_slider, &QSlider::valueChanged, this, &Widget::slot_slider_changed);
@@ -212,17 +264,15 @@ void Widget::setupConnections()
     live_timer = new QTimer(this);
     replay_timer = new QTimer(this);
 
-    // 定时器信号
+    // 定时器信号连接保持不变...
     connect(live_timer, &QTimer::timeout, this, [this]() {
         if (!is_recording && !is_replaying) {
-            // 仅实时预览
             cam_vd->get_frame((void**)&cam_raw_buf, (size_t*)&cam_raw_buf_len);
             yuyv422_to_rgb888(cam_raw_buf, cam_rgb_buf, width, height);
             *image = QImage(cam_rgb_buf, width, height, QImage::Format_RGB888);
             cam_vd->unget_frame();
             update();
         } else if (is_recording) {
-            // 录制模式
             cam_vd->get_frame((void**)&cam_raw_buf, (size_t*)&cam_raw_buf_len);
             yuyv422_to_rgb888(cam_raw_buf, cam_rgb_buf, width, height);
             *image = QImage(cam_rgb_buf, width, height, QImage::Format_RGB888);
@@ -233,6 +283,44 @@ void Widget::setupConnections()
     });
 
     connect(replay_timer, &QTimer::timeout, this, &Widget::slot_replay_frame);
+}
+
+void Widget::slot_prev_file()
+{
+    if (history_files.isEmpty()) return;
+
+    current_file_index = (current_file_index - 1 + history_files.size()) % history_files.size();
+    update_file_display();
+}
+
+void Widget::slot_next_file()
+{
+    if (history_files.isEmpty()) return;
+
+    current_file_index = (current_file_index + 1) % history_files.size();
+    update_file_display();
+}
+
+void Widget::update_file_display()
+{
+    if (history_files.isEmpty()) {
+        lbl_file_info->setText("No files");
+        btn_prev_file->setEnabled(false);
+        btn_next_file->setEnabled(false);
+        return;
+    }
+
+    btn_prev_file->setEnabled(true);
+    btn_next_file->setEnabled(true);
+
+    QString filename = history_files[current_file_index];
+    // 只显示文件名的前部分，节省空间
+//    if (filename.length() > 15) {
+//        filename = filename.left(12) + "...";
+//    }
+    lbl_file_info->setText(QString("%1/%2\n%3").arg(current_file_index + 1)
+                                               .arg(history_files.size())
+                                               .arg(filename));
 }
 
 void Widget::slot_display_error(QString msg)
@@ -268,7 +356,7 @@ void Widget::slot_start_recording()
     // 确保摄像头正在工作
     if (!live_timer->isActive()) {
         cam_vd->open_device();
-        cam_vd->init_device();
+        cam_vd->init_device(width,height);
         cam_vd->start_capturing();
         live_timer->start(1000 / DEFAULT_FPS);
     }
@@ -307,13 +395,14 @@ void Widget::slot_start_replay()
         return;
     }
 
-    QString selected_file = combo_history_files->currentText();
-    if (selected_file.isEmpty()) {
-        update_status("Please select a file to replay!");
+    if (history_files.isEmpty()) {
+        update_status("No files to replay!");
         return;
     }
 
+    QString selected_file = history_files[current_file_index];
     QString full_path = QString("%1/%2").arg(RECORD_DIR).arg(selected_file);
+
     if (!load_recording_from_file(full_path)) {
         update_status("Failed to load recording file!");
         return;
@@ -466,7 +555,7 @@ bool Widget::initialize_camera()
     }
 
     // 初始化设备
-    if (cam_vd->init_device() != 0) {
+    if (cam_vd->init_device(width,height) != 0) {
         qDebug() << "Failed to initialize camera device";
         cam_vd->close_device();
         return false;
@@ -655,7 +744,7 @@ void Widget::update_progress_display()
 
 void Widget::refresh_history_files()
 {
-    combo_history_files->clear();
+    history_files.clear();
 
     QDir dir(RECORD_DIR);
     QStringList filters;
@@ -664,8 +753,11 @@ void Widget::refresh_history_files()
 
     QFileInfoList files = dir.entryInfoList(QDir::Files, QDir::Time);
     for (const QFileInfo &info : files) {
-        combo_history_files->addItem(info.fileName());
+        history_files.append(info.fileName());
     }
+
+    current_file_index = 0;
+    update_file_display();
 }
 
 void Widget::update_status(const QString &status)

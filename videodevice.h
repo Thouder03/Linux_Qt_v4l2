@@ -26,7 +26,7 @@ public:
     //VideoDevice();
     int open_device();
     int close_device();
-    int init_device();
+    int init_device(int width,int height);
     int start_capturing();
     int stop_capturing();
     int uninit_device();

@@ -86,6 +86,8 @@ private slots:
     void slot_slider_changed(int value);
     void slot_select_history_file();
     void slot_live_capture();
+    void slot_prev_file();
+    void slot_next_file();
 
 private:
     Ui::Widget *ui;
@@ -156,6 +158,16 @@ private:
     bool initialize_camera();
     bool cleanup_camera();
     void update_status_indicator();  // 更新状态指示器
+
+    // 新增文件选择相关
+    int current_file_index;
+    QStringList history_files;
+    QPushButton *btn_prev_file;
+    QPushButton *btn_next_file;
+    QLabel *lbl_file_info;
+
+    // 新增方法声明
+    void update_file_display();
 
     // 常量
     static const QString RECORD_DIR;
