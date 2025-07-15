@@ -247,8 +247,7 @@ void Widget::setupUI()
     setWindowTitle("Video System");
     setFixedSize(480, 272);  // 固定窗口大小
 }
-
-// 修改setupConnections()函数，添加新按钮的连接
+//连接槽函数
 void Widget::setupConnections()
 {
     // 原有连接保持不变...
@@ -324,10 +323,6 @@ void Widget::update_file_display()
     btn_next_file->setEnabled(true);
 
     QString filename = history_files[current_file_index];
-    // 只显示文件名的前部分，节省空间
-//    if (filename.length() > 15) {
-//        filename = filename.left(12) + "...";
-//    }
     lbl_file_info->setText(QString("%1/%2\n%3").arg(current_file_index + 1)
                                                .arg(history_files.size())
                                                .arg(filename));
@@ -475,9 +470,7 @@ void Widget::slot_stop_replay()
     //重新启动摄像头
     reset_replay_state();
     slot_live_capture();
-    // 延迟重新启动摄像头，确保设备完全释放
-    //QTimer::singleShot(100, this, &Widget::slot_live_capture);
-    //reset_replay_state();
+
 }
 
 void Widget::slot_replay_frame()
@@ -486,9 +479,6 @@ void Widget::slot_replay_frame()
         if (replay_frame_index >= replay_frames.size()) {
             reset_replay_state();
             slot_live_capture();
-            // 回放结束，延迟重新启动摄像头
-            //QTimer::singleShot(100, this, &Widget::slot_live_capture);
-            //reset_replay_state();
         }
         return;
     }
@@ -537,29 +527,6 @@ void Widget::slot_live_capture()
 {
     if (is_recording || is_replaying) return;
 
-//    if(!is_replaying)
-//    {
-//        // 重置状态
-//        reset_replay_state();
-//        // 重新初始化摄像头
-//        cleanup_camera();
-//    }
-
-    // 短暂延迟后重新打开
-//    QTimer::singleShot(100, this, [this]() {
-//        if (initialize_camera()) {
-//            live_timer->start(1000 / DEFAULT_FPS);
-
-//            btn_rec->setEnabled(true);
-//            btn_replay->setEnabled(true);
-
-//            update_status("Live preview");
-//            update_status_indicator();
-//        } else {
-//            update_status("Failed to initialize camera");
-//            btn_rec->setEnabled(false);
-//        }
-//    });
     btn_live->setEnabled(false);
     QTimer::singleShot(500, this, [=]() { btn_live->setEnabled(true);});
     if (!is_camera_opened) {
@@ -570,7 +537,6 @@ void Widget::slot_live_capture()
         if (initialize_camera()) {
             live_timer->start(1000 / DEFAULT_FPS);
             btn_rec->setEnabled(true);
-//            btn_replay->setEnabled(true);
             update_status("Live preview started");
             update_status_indicator();
 
@@ -584,9 +550,7 @@ void Widget::slot_live_capture()
         // 关闭摄像头
         live_timer->stop();
         cleanup_camera();
-
         btn_rec->setEnabled(false);
-//        btn_replay->setEnabled(false);
         update_status("Camera stopped");
         update_status_indicator();
 
