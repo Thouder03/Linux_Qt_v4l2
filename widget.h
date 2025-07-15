@@ -30,6 +30,7 @@
 #include <QPaintEvent>
 #include <QDebug>
 #include <QThread>
+#include <QPainter>
 #include "videodevice.h"
 
 QT_BEGIN_NAMESPACE
@@ -39,6 +40,29 @@ QT_END_NAMESPACE
 struct VideoFrame {
     QByteArray data;
     qint64 timestamp;
+};
+
+// 状态枚举
+enum class DeviceStatus {
+    LIVE,        // 红色 - 实时显示
+    RECORDING,   // 绿色 - 录制
+    REPLAYING    // 蓝色 - 视频文件回放
+};
+
+class StatusIndicator : public QWidget
+{
+    Q_OBJECT
+
+public:
+    StatusIndicator(QWidget *parent = nullptr);
+    void setStatus(DeviceStatus status);
+
+protected:
+    void paintEvent(QPaintEvent *event) override;
+
+private:
+    DeviceStatus m_status;
+    QColor getStatusColor() const;
 };
 
 class Widget : public QWidget
@@ -106,15 +130,13 @@ private:
     QLabel *lbl_status;
     QLabel *lbl_video_display;
     QComboBox *combo_history_files;
-    QLabel *lbl_fps;
-    QSpinBox *spin_fps;
+    StatusIndicator *status_indicator;  // 替换FPS控件
 
     // 布局
     QVBoxLayout *main_layout;
     QHBoxLayout *control_layout;
     QHBoxLayout *progress_layout;
     QHBoxLayout *file_layout;
-    QHBoxLayout *fps_layout;
     QGroupBox *control_group;
     QGroupBox *progress_group;
     QGroupBox *file_group;
@@ -133,13 +155,13 @@ private:
     void cleanup_resources();
     bool initialize_camera();
     bool cleanup_camera();
+    void update_status_indicator();  // 更新状态指示器
 
     // 常量
     static const QString RECORD_DIR;
     static const QString RECORD_EXTENSION;
     static const int DEFAULT_FPS = 30;
     static const int MAX_FRAMES_IN_MEMORY = 18000; // 30fps * 10分钟
-
 
     Qt::GlobalColor currentColor;
     bool isVisible;  // 控制是否显示颜色

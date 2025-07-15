@@ -4,6 +4,46 @@
 const QString Widget::RECORD_DIR = "recordings";
 const QString Widget::RECORD_EXTENSION = ".vrf"; // Video Recording File
 
+// StatusIndicator 实现
+StatusIndicator::StatusIndicator(QWidget *parent)
+    : QWidget(parent), m_status(DeviceStatus::LIVE)
+{
+    setFixedSize(30, 30);
+    setToolTip("Device Status");
+}
+
+void StatusIndicator::setStatus(DeviceStatus status)
+{
+    m_status = status;
+    update();
+}
+
+void StatusIndicator::paintEvent(QPaintEvent *event)
+{
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    // 绘制圆形背景
+    painter.setBrush(QBrush(getStatusColor()));
+    painter.setPen(QPen(Qt::black, 2));
+    painter.drawEllipse(5, 5, 20, 20);
+}
+
+QColor StatusIndicator::getStatusColor() const
+{
+    switch (m_status) {
+        case DeviceStatus::LIVE:
+            return QColor(255, 0, 0);      // 红色 - 实时显示
+        case DeviceStatus::RECORDING:
+            return QColor(0, 255, 0);      // 绿色 - 录制
+        case DeviceStatus::REPLAYING:
+            return QColor(0, 0, 255);      // 蓝色 - 视频文件回放
+        default:
+            return QColor(128, 128, 128);   // 灰色 - 默认
+    }
+}
+
+// Widget 实现
 Widget::Widget(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::Widget)
@@ -31,8 +71,9 @@ Widget::Widget(QWidget *parent)
     cam_rgb_buf = (unsigned char*)malloc(cam_rgb_buf_len);
 
     if (!cam_raw_buf || !cam_rgb_buf) {
-        QMessageBox::critical(this, "Memory Error", "Failed to allocate memory buffers!");
-        exit(1);
+        // 移除错误弹窗，改为在状态栏显示
+        update_status("Memory allocation failed!");
+        return;
     }
 
     // 创建图像对象
@@ -90,15 +131,12 @@ void Widget::setupUI()
     lbl_video_display = new QLabel(this);
     lbl_video_display->setMinimumSize(320, 240);
     lbl_video_display->setStyleSheet("border: 1px solid gray;");
-    //lbl_video_display->setScaledContents(true);
 
     combo_history_files = new QComboBox(this);
     combo_history_files->setMinimumWidth(200);
 
-    lbl_fps = new QLabel("FPS:", this);
-    spin_fps = new QSpinBox(this);
-    spin_fps->setRange(1, 60);
-    spin_fps->setValue(DEFAULT_FPS);
+    // 创建状态指示器
+    status_indicator = new StatusIndicator(this);
 
     // 创建布局
     main_layout = new QVBoxLayout(this);
@@ -117,12 +155,12 @@ void Widget::setupUI()
     control_layout->addWidget(btn_stop_replay);
     control_layout->addStretch();
 
-    // FPS设置
-    fps_layout = new QHBoxLayout();
-    fps_layout->addWidget(lbl_fps);
-    fps_layout->addWidget(spin_fps);
-    fps_layout->addStretch();
-    control_layout->addLayout(fps_layout);
+    // 状态指示器布局（替换FPS设置）
+    QHBoxLayout *status_layout = new QHBoxLayout();
+    status_layout->addWidget(new QLabel("Status:", this));
+    status_layout->addWidget(status_indicator);
+    status_layout->addStretch();
+    control_layout->addLayout(status_layout);
 
     main_layout->addWidget(control_group);
 
@@ -150,7 +188,7 @@ void Widget::setupUI()
 
     setLayout(main_layout);
     setWindowTitle("Video Capture & Replay System");
-    resize(400, 400);
+    resize(480, 272);
 }
 
 void Widget::setupConnections()
@@ -199,19 +237,20 @@ void Widget::setupConnections()
 
 void Widget::slot_display_error(QString msg)
 {
-    QMessageBox::critical(this, "Device Error", QString("Device %1 failed!").arg(msg));
+    // 移除错误弹窗，改为在状态栏显示
+    update_status(QString("Device Error: %1").arg(msg));
     qDebug() << msg;
 }
 
 void Widget::slot_start_recording()
 {
     if (is_replaying) {
-        QMessageBox::warning(this, "Warning", "Please stop replay first!");
+        update_status("Please stop replay first!");
         return;
     }
 
     if (recorded_frames.size() >= MAX_FRAMES_IN_MEMORY) {
-        QMessageBox::warning(this, "Warning", "Maximum recording length reached!");
+        update_status("Maximum recording length reached!");
         return;
     }
 
@@ -224,13 +263,14 @@ void Widget::slot_start_recording()
     btn_replay->setEnabled(false);
 
     update_status("Recording...");
+    update_status_indicator();
 
     // 确保摄像头正在工作
     if (!live_timer->isActive()) {
         cam_vd->open_device();
         cam_vd->init_device();
         cam_vd->start_capturing();
-        live_timer->start(1000 / spin_fps->value());
+        live_timer->start(1000 / DEFAULT_FPS);
     }
 }
 
@@ -256,24 +296,26 @@ void Widget::slot_stop_recording()
     btn_rec->setEnabled(true);
     btn_end->setEnabled(false);
     btn_replay->setEnabled(true);
+
+    update_status_indicator();
 }
 
 void Widget::slot_start_replay()
 {
     if (is_recording) {
-        QMessageBox::warning(this, "Warning", "Please stop recording first!");
+        update_status("Please stop recording first!");
         return;
     }
 
     QString selected_file = combo_history_files->currentText();
     if (selected_file.isEmpty()) {
-        QMessageBox::warning(this, "Warning", "Please select a file to replay!");
+        update_status("Please select a file to replay!");
         return;
     }
 
     QString full_path = QString("%1/%2").arg(RECORD_DIR).arg(selected_file);
     if (!load_recording_from_file(full_path)) {
-        QMessageBox::critical(this, "Error", "Failed to load recording file!");
+        update_status("Failed to load recording file!");
         return;
     }
 
@@ -300,9 +342,10 @@ void Widget::slot_start_replay()
     btn_rec->setEnabled(false);
 
     // 启动回放定时器
-    replay_timer->start(1000 / spin_fps->value());
+    replay_timer->start(1000 / DEFAULT_FPS);
 
     update_status("Replaying...");
+    update_status_indicator();
 }
 
 void Widget::slot_pause_replay()
@@ -316,7 +359,7 @@ void Widget::slot_pause_replay()
         btn_pause->setText("Resume");
         update_status("Paused");
     } else {
-        replay_timer->start(1000 / spin_fps->value());
+        replay_timer->start(1000 / DEFAULT_FPS);
         btn_pause->setText("Pause");
         update_status("Replaying...");
     }
@@ -394,18 +437,16 @@ void Widget::slot_live_capture()
     // 短暂延迟后重新打开
     QTimer::singleShot(100, this, [this]() {
         if (initialize_camera()) {
-            live_timer->start(1000 / spin_fps->value());
+            live_timer->start(1000 / DEFAULT_FPS);
 
             btn_rec->setEnabled(true);
             btn_replay->setEnabled(true);
 
             update_status("Live preview");
+            update_status_indicator();
         } else {
             update_status("Failed to initialize camera");
             btn_rec->setEnabled(false);
-            QMessageBox::critical(this, "Camera Error",
-                "Failed to initialize camera device!\n"
-                "Please check if the camera is being used by another application.");
         }
     });
 }
@@ -578,7 +619,7 @@ bool Widget::load_recording_from_file(const QString &filename)
 
     if (w != width || h != height) {
         file.close();
-        QMessageBox::warning(this, "Warning", "Video dimensions don't match!");
+        update_status("Video dimensions don't match!");
         return false;
     }
 
@@ -627,6 +668,17 @@ void Widget::update_status(const QString &status)
     lbl_status->setText(QString("Status: %1").arg(status));
 }
 
+void Widget::update_status_indicator()
+{
+    if (is_recording) {
+        status_indicator->setStatus(DeviceStatus::RECORDING);
+    } else if (is_replaying) {
+        status_indicator->setStatus(DeviceStatus::REPLAYING);
+    } else {
+        status_indicator->setStatus(DeviceStatus::LIVE);
+    }
+}
+
 void Widget::reset_replay_state()
 {
     is_replaying = false;
@@ -645,6 +697,7 @@ void Widget::reset_replay_state()
     btn_pause->setText("Pause");
 
     update_progress_display();
+    update_status_indicator();
 }
 
 void Widget::cleanup_resources()
