@@ -237,7 +237,7 @@ void Widget::setupConnections()
 
 void Widget::slot_display_error(QString msg)
 {
-    // 移除错误弹窗，改为在状态栏显示
+    // 在状态栏显示
     update_status(QString("Device Error: %1").arg(msg));
     qDebug() << msg;
 }
@@ -367,19 +367,21 @@ void Widget::slot_pause_replay()
 
 void Widget::slot_stop_replay()
 {
-    reset_replay_state();
-
+    //重新启动摄像头
+    slot_live_capture();
     // 延迟重新启动摄像头，确保设备完全释放
-    QTimer::singleShot(100, this, &Widget::slot_live_capture);
+    //QTimer::singleShot(100, this, &Widget::slot_live_capture);
+    reset_replay_state();
 }
 
 void Widget::slot_replay_frame()
 {
     if (!is_replaying || is_paused || replay_frame_index >= replay_frames.size()) {
         if (replay_frame_index >= replay_frames.size()) {
+            slot_live_capture();
             // 回放结束，延迟重新启动摄像头
+            //QTimer::singleShot(100, this, &Widget::slot_live_capture);
             reset_replay_state();
-            QTimer::singleShot(100, this, &Widget::slot_live_capture);
         }
         return;
     }
@@ -426,13 +428,15 @@ void Widget::slot_select_history_file()
 
 void Widget::slot_live_capture()
 {
-    if (is_recording || is_replaying) return;
+    if (is_recording) return;
 
-    // 重置状态
-    reset_replay_state();
-
-    // 重新初始化摄像头
-    cleanup_camera();
+    if(!is_replaying)
+    {
+        // 重置状态
+        reset_replay_state();
+        // 重新初始化摄像头
+        cleanup_camera();
+    }
 
     // 短暂延迟后重新打开
     QTimer::singleShot(100, this, [this]() {
@@ -492,15 +496,16 @@ bool Widget::cleanup_camera()
             success = false;
         }
 
+        if (cam_vd->close_device() != 0) {
+            qDebug() << "Warning: Failed to close device";
+            success = false;
+        }
+
         if (cam_vd->uninit_device() != 0) {
             qDebug() << "Warning: Failed to uninit device";
             success = false;
         }
 
-        if (cam_vd->close_device() != 0) {
-            qDebug() << "Warning: Failed to close device";
-            success = false;
-        }
     } catch (...) {
         qDebug() << "Exception during camera cleanup";
         success = false;
@@ -709,7 +714,6 @@ void Widget::cleanup_resources()
         replay_timer->stop();
     }
 
-    // 使用新的清理机制
     cleanup_camera();
 
     if (cam_vd) {
