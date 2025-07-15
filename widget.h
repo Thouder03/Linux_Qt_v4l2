@@ -178,6 +178,8 @@ private:
     Qt::GlobalColor currentColor;
     bool isVisible;  // 控制是否显示颜色
     bool isActive;   // 标记是否已激活（首次点击按钮后启动定时器）
+    bool is_camera_opened = false;
+    bool cleanup_flag = false;
 };
 
 #endif // WIDGET_H

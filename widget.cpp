@@ -26,7 +26,7 @@ void StatusIndicator::paintEvent(QPaintEvent *event)
     // 绘制圆形背景
     painter.setBrush(QBrush(getStatusColor()));
     painter.setPen(QPen(Qt::black, 1));
-    painter.drawEllipse(5, 5, 10, 10);
+    painter.drawEllipse(4, 4, 15, 15);
 }
 
 QColor StatusIndicator::getStatusColor() const
@@ -111,6 +111,7 @@ Widget::~Widget()
     cleanup_resources();
     delete ui;
 }
+
 void Widget::setupUI()
 {
     // 创建控件
@@ -126,15 +127,15 @@ void Widget::setupUI()
     btn_next_file = new QPushButton("▶", this);
     lbl_file_info = new QLabel("No files", this);
 
-    // 设置按钮尺寸更紧凑
-    btn_rec->setFixedSize(40, 25);
-    btn_end->setFixedSize(40, 25);
-    btn_replay->setFixedSize(50, 25);
-    btn_pause->setFixedSize(45, 25);
-    btn_stop_replay->setFixedSize(40, 25);
-    btn_live->setFixedSize(40, 25);
-    btn_prev_file->setFixedSize(25, 25);
-    btn_next_file->setFixedSize(25, 25);
+    // 设置按钮尺寸
+    btn_rec->setFixedSize(65, 30);
+    btn_end->setFixedSize(65, 30);
+    btn_replay->setFixedSize(65, 30);
+    btn_pause->setFixedSize(65, 30);
+    btn_stop_replay->setFixedSize(65, 30);
+    btn_live->setFixedSize(65, 30);
+    btn_prev_file->setFixedSize(65, 30);
+    btn_next_file->setFixedSize(65, 30);
 
     progress_slider = new QSlider(Qt::Horizontal, this);
     progress_slider->setEnabled(false);
@@ -144,6 +145,7 @@ void Widget::setupUI()
     lbl_progress->setFixedWidth(40);
 
     lbl_status = new QLabel("Ready", this);
+    lbl_status->setFixedWidth(140);
     lbl_status->setFixedHeight(40);
 
     lbl_video_display = new QLabel(this);
@@ -180,23 +182,28 @@ void Widget::setupUI()
     status_layout->addStretch();
     right_buttons_layout->addLayout(status_layout);
 
-    // 主要控制按钮
-    QHBoxLayout *main_controls = new QHBoxLayout();
-    main_controls->setSpacing(2);
-    main_controls->addWidget(btn_live);
-    main_controls->addWidget(btn_rec);
-    main_controls->addWidget(btn_end);
-    right_buttons_layout->addLayout(main_controls);
+    // 主要控制按钮 - 第一行
+    QHBoxLayout *main_controls_row1 = new QHBoxLayout();
+    main_controls_row1->setSpacing(2);
+    main_controls_row1->addWidget(btn_live);
+    main_controls_row1->addWidget(btn_rec);
+    right_buttons_layout->addLayout(main_controls_row1);
 
-    // 回放控制按钮
-    QHBoxLayout *replay_controls = new QHBoxLayout();
-    replay_controls->setSpacing(2);
-    replay_controls->addWidget(btn_replay);
-    replay_controls->addWidget(btn_pause);
-    replay_controls->addWidget(btn_stop_replay);
-    right_buttons_layout->addLayout(replay_controls);
+    // 主要控制按钮 - 第二行
+    QHBoxLayout *main_controls_row2 = new QHBoxLayout();
+    main_controls_row2->setSpacing(2);
+    main_controls_row2->addWidget(btn_end);
+    main_controls_row2->addWidget(btn_replay);
+    right_buttons_layout->addLayout(main_controls_row2);
 
-    // 文件选择控件
+    // 回放控制按钮 - 第三行
+    QHBoxLayout *replay_controls_row1 = new QHBoxLayout();
+    replay_controls_row1->setSpacing(2);
+    replay_controls_row1->addWidget(btn_pause);
+    replay_controls_row1->addWidget(btn_stop_replay);
+    right_buttons_layout->addLayout(replay_controls_row1);
+
+    // 文件选择控件 - 第四行
     QHBoxLayout *file_controls = new QHBoxLayout();
     file_controls->setSpacing(2);
     file_controls->addWidget(btn_prev_file);
@@ -207,9 +214,8 @@ void Widget::setupUI()
     right_buttons_layout->addWidget(lbl_file_info);
 
     // 将状态栏放到右侧
-    lbl_status->setFixedWidth(140);
     lbl_status->setWordWrap(true);
-    lbl_status->setStyleSheet("font-size: 10px; border: 1px solid gray; padding: 2px;");
+    lbl_status->setStyleSheet("font-size: 12px; border: 1px solid gray; padding: 2px;");
     right_buttons_layout->addWidget(lbl_status);
 
     right_buttons_layout->addStretch();
@@ -223,6 +229,9 @@ void Widget::setupUI()
     progress_layout->addWidget(progress_slider);
     progress_layout->addWidget(lbl_progress);
     main_layout->addLayout(progress_layout);
+
+    // 状态栏已移到右侧，不再需要添加到主布局
+    // main_layout->addWidget(lbl_status);  // 删除这行
 
     // 初始按钮状态
     btn_end->setEnabled(false);
@@ -238,6 +247,7 @@ void Widget::setupUI()
     setWindowTitle("Video System");
     setFixedSize(480, 272);  // 固定窗口大小
 }
+
 // 修改setupConnections()函数，添加新按钮的连接
 void Widget::setupConnections()
 {
@@ -349,6 +359,7 @@ void Widget::slot_start_recording()
     btn_rec->setEnabled(false);
     btn_end->setEnabled(true);
     btn_replay->setEnabled(false);
+    btn_live->setEnabled(false);
 
     update_status("Recording...");
     update_status_indicator();
@@ -369,7 +380,7 @@ void Widget::slot_stop_recording()
     is_recording = false;
 
     // 保存录制文件
-    QString filename = QString("%1/recording_%2%3")
+    QString filename = QString("%1/REC_%2%3")
         .arg(RECORD_DIR)
         .arg(record_start_time.toString("yyyyMMdd_hhmmss"))
         .arg(RECORD_EXTENSION);
@@ -384,6 +395,7 @@ void Widget::slot_stop_recording()
     btn_rec->setEnabled(true);
     btn_end->setEnabled(false);
     btn_replay->setEnabled(true);
+    btn_live->setEnabled(true);
 
     update_status_indicator();
 }
@@ -429,6 +441,8 @@ void Widget::slot_start_replay()
     btn_pause->setEnabled(true);
     btn_stop_replay->setEnabled(true);
     btn_rec->setEnabled(false);
+    btn_live->setEnabled(false);
+    is_camera_opened = false;//
 
     // 启动回放定时器
     replay_timer->start(1000 / DEFAULT_FPS);
@@ -456,21 +470,25 @@ void Widget::slot_pause_replay()
 
 void Widget::slot_stop_replay()
 {
+    btn_live->setEnabled(true);
+    is_camera_opened = false;
     //重新启动摄像头
+    reset_replay_state();
     slot_live_capture();
     // 延迟重新启动摄像头，确保设备完全释放
     //QTimer::singleShot(100, this, &Widget::slot_live_capture);
-    reset_replay_state();
+    //reset_replay_state();
 }
 
 void Widget::slot_replay_frame()
 {
     if (!is_replaying || is_paused || replay_frame_index >= replay_frames.size()) {
         if (replay_frame_index >= replay_frames.size()) {
+            reset_replay_state();
             slot_live_capture();
             // 回放结束，延迟重新启动摄像头
             //QTimer::singleShot(100, this, &Widget::slot_live_capture);
-            reset_replay_state();
+            //reset_replay_state();
         }
         return;
     }
@@ -517,31 +535,64 @@ void Widget::slot_select_history_file()
 
 void Widget::slot_live_capture()
 {
-    if (is_recording) return;
+    if (is_recording || is_replaying) return;
 
-    if(!is_replaying)
-    {
-        // 重置状态
-        reset_replay_state();
-        // 重新初始化摄像头
-        cleanup_camera();
-    }
+//    if(!is_replaying)
+//    {
+//        // 重置状态
+//        reset_replay_state();
+//        // 重新初始化摄像头
+//        cleanup_camera();
+//    }
 
     // 短暂延迟后重新打开
-    QTimer::singleShot(100, this, [this]() {
+//    QTimer::singleShot(100, this, [this]() {
+//        if (initialize_camera()) {
+//            live_timer->start(1000 / DEFAULT_FPS);
+
+//            btn_rec->setEnabled(true);
+//            btn_replay->setEnabled(true);
+
+//            update_status("Live preview");
+//            update_status_indicator();
+//        } else {
+//            update_status("Failed to initialize camera");
+//            btn_rec->setEnabled(false);
+//        }
+//    });
+    btn_live->setEnabled(false);
+    QTimer::singleShot(500, this, [=]() { btn_live->setEnabled(true);});
+    if (!is_camera_opened) {
+        // 打开摄像头
+        reset_replay_state();  // 清除回放状态
+        cleanup_camera();
+
         if (initialize_camera()) {
             live_timer->start(1000 / DEFAULT_FPS);
-
             btn_rec->setEnabled(true);
-            btn_replay->setEnabled(true);
-
-            update_status("Live preview");
+//            btn_replay->setEnabled(true);
+            update_status("Live preview started");
             update_status_indicator();
+
+            btn_live->setText("Close");
+            is_camera_opened = true;
         } else {
             update_status("Failed to initialize camera");
             btn_rec->setEnabled(false);
         }
-    });
+    } else {
+        // 关闭摄像头
+        live_timer->stop();
+        cleanup_camera();
+
+        btn_rec->setEnabled(false);
+//        btn_replay->setEnabled(false);
+        update_status("Camera stopped");
+        update_status_indicator();
+
+        btn_live->setText("Open");
+        is_camera_opened = false;
+    }
 }
 
 bool Widget::initialize_camera()
@@ -575,34 +626,36 @@ bool Widget::initialize_camera()
 bool Widget::cleanup_camera()
 {
     if (!cam_vd) return true;
+    cleanup_flag = !cleanup_flag;
 
     bool success = true;
+    if(!cleanup_flag)
+    {
+        // 按照正确的顺序关闭设备
+        try {
+            if (cam_vd->stop_capturing() != 0) {
+                qDebug() << "Warning: Failed to stop capturing";
+                success = false;
+            }
 
-    // 按照正确的顺序关闭设备
-    try {
-        if (cam_vd->stop_capturing() != 0) {
-            qDebug() << "Warning: Failed to stop capturing";
+            if (cam_vd->close_device() != 0) {
+                qDebug() << "Warning: Failed to close device";
+                success = false;
+            }
+
+            if (cam_vd->uninit_device() != 0) {
+                qDebug() << "Warning: Failed to uninit device";
+                success = false;
+            }
+
+        } catch (...) {
+            qDebug() << "Exception during camera cleanup";
             success = false;
         }
 
-        if (cam_vd->close_device() != 0) {
-            qDebug() << "Warning: Failed to close device";
-            success = false;
-        }
-
-        if (cam_vd->uninit_device() != 0) {
-            qDebug() << "Warning: Failed to uninit device";
-            success = false;
-        }
-
-    } catch (...) {
-        qDebug() << "Exception during camera cleanup";
-        success = false;
+        // 短暂延迟让系统释放资源
+        QThread::msleep(50);
     }
-
-    // 短暂延迟让系统释放资源
-    QThread::msleep(50);
-
     return success;
 }
 
