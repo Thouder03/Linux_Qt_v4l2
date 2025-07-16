@@ -156,7 +156,7 @@ void Widget::setupUI()
     progress_slider->setFixedHeight(20);
 
     lbl_progress = new QLabel("0/0", this);
-    lbl_progress->setFixedWidth(40);
+    lbl_progress->setMinimumWidth(40);
 
     lbl_status = new QLabel("Ready", this);
     lbl_status->setFixedWidth(140);
