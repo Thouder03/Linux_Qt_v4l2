@@ -40,6 +40,15 @@ QT_END_NAMESPACE
 struct VideoFrame {
     QByteArray data;
     qint64 timestamp;
+    QString overlay_text;        // 保存覆盖文字
+    QString recorded_time;       // 保存录制时的时间字符串
+
+    // 默认构造函数
+    VideoFrame() : timestamp(0) {}
+
+    // 带参数的构造函数
+    VideoFrame(const QByteArray &frameData, qint64 ts, const QString &overlayText, const QString &recordTime)
+        : data(frameData), timestamp(ts), overlay_text(overlayText), recorded_time(recordTime) {}
 };
 
 // 状态枚举
@@ -185,6 +194,9 @@ private:
     // 添加时间更新定时器
     QTimer *time_update_timer;
     QString overlay_text;  // 可自定义的覆盖文字
+    // 回放时的文字信息
+    QString current_replay_overlay_text;  // 当前回放帧的覆盖文字
+    QString current_replay_time;          // 当前回放帧的录制时间
 };
 
 #endif // WIDGET_H

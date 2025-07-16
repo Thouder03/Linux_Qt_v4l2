@@ -59,6 +59,8 @@ Widget::Widget(QWidget *parent)
     , is_paused(false)
     , replay_frame_index(0)
     , overlay_text("华迪505实训室")  // 默认覆盖文字
+    , current_replay_overlay_text("")           // 初始化回放文字
+    , current_replay_time("")                   // 初始化回放时间
 {
     ui->setupUi(this);
 
@@ -499,6 +501,10 @@ void Widget::slot_replay_frame()
     memcpy(cam_rgb_buf, frame.data.constData(), cam_rgb_buf_len);
     *image = QImage(cam_rgb_buf, width, height, QImage::Format_RGB888);
 
+    // 设置当前帧的文字信息用于显示
+    current_replay_overlay_text = frame.overlay_text;
+    current_replay_time = frame.recorded_time;
+
     // 更新进度条
     progress_slider->setValue(replay_frame_index);
     update_progress_display();
@@ -516,6 +522,10 @@ void Widget::slot_slider_changed(int value)
         const VideoFrame &frame = replay_frames[replay_frame_index];
         memcpy(cam_rgb_buf, frame.data.constData(), cam_rgb_buf_len);
         *image = QImage(cam_rgb_buf, width, height, QImage::Format_RGB888);
+
+        // 设置当前帧的文字信息用于显示
+        current_replay_overlay_text = frame.overlay_text;
+        current_replay_time = frame.recorded_time;
 
         update_progress_display();
         update();
@@ -649,13 +659,25 @@ void Widget::paintEvent(QPaintEvent *)
         QFont font("Arial", 12, QFont::Bold);
         painter.setFont(font);
 
-        // 设置文字颜色和背景
+        // 设置文字颜色
         painter.setPen(QPen(Qt::white, 2));
 
-        // 绘制半透明背景
-        QString displayText = "Video System";
-        QString currentTime = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss");
-        QString combinedText = displayText + "\n" + currentTime;
+        // 根据当前状态确定显示的文字和时间
+        QString displayText;
+        QString timeText;
+
+        if (is_replaying) {
+            // 回放状态：显示录制时保存的文字和时间
+            displayText = current_replay_overlay_text.isEmpty() ? overlay_text : current_replay_overlay_text;
+            timeText = current_replay_time.isEmpty() ?
+                      QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss") : current_replay_time;
+        } else {
+            // 实时状态：显示当前文字和当前时间
+            displayText = overlay_text;
+            timeText = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss");
+        }
+
+        QString combinedText = displayText + "\n" + timeText;
 
         QFontMetrics metrics(font);
         QRect textRect = metrics.boundingRect(QRect(0, 0, pixmap.width(), pixmap.height()),
@@ -720,9 +742,12 @@ void Widget::save_frame_to_record()
 {
     if (!is_recording || recorded_frames.size() >= MAX_FRAMES_IN_MEMORY) return;
 
+    // 创建VideoFrame对象，保存图像数据和文字信息
     VideoFrame frame;
     frame.data = QByteArray((char*)cam_rgb_buf, cam_rgb_buf_len);
     frame.timestamp = QDateTime::currentMSecsSinceEpoch();
+    frame.overlay_text = overlay_text;  // 保存当前覆盖文字
+    frame.recorded_time = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss");  // 保存录制时间
 
     recorded_frames.append(frame);
 
@@ -740,17 +765,19 @@ bool Widget::save_recording_to_file(const QString &filename)
     QDataStream out(&file);
     out.setVersion(QDataStream::Qt_5_0);
 
-    // 写入头信息
+    // 写入头信息 - 增加版本号以支持新格式
     out << quint32(0x12345678); // 魔数
-    out << quint32(1); // 版本
+    out << quint32(2); // 版本号改为2，支持文字信息
     out << quint32(width);
     out << quint32(height);
     out << quint32(recorded_frames.size());
 
-    // 写入帧数据
+    // 写入帧数据，包括文字信息
     for (const VideoFrame &frame : recorded_frames) {
         out << frame.timestamp;
         out << frame.data;
+        out << frame.overlay_text;      // 写入覆盖文字
+        out << frame.recorded_time;     // 写入录制时间
     }
 
     file.close();
@@ -771,8 +798,15 @@ bool Widget::load_recording_from_file(const QString &filename)
     quint32 magic, version, w, h, frame_count;
     in >> magic >> version >> w >> h >> frame_count;
 
-    if (magic != 0x12345678 || version != 1) {
+    if (magic != 0x12345678) {
         file.close();
+        return false;
+    }
+
+    // 检查版本兼容性
+    if (version != 1 && version != 2) {
+        file.close();
+        update_status("Unsupported file version!");
         return false;
     }
 
@@ -790,6 +824,18 @@ bool Widget::load_recording_from_file(const QString &filename)
         VideoFrame frame;
         in >> frame.timestamp;
         in >> frame.data;
+
+        // 如果是版本2，读取文字信息
+        if (version == 2) {
+            in >> frame.overlay_text;
+            in >> frame.recorded_time;
+        } else {
+            // 版本1的兼容性处理
+            frame.overlay_text = "Version";  // 默认文字
+            frame.recorded_time = QDateTime::fromMSecsSinceEpoch(frame.timestamp)
+                                    .toString("yyyy-MM-dd hh:mm:ss");
+        }
+
         replay_frames.append(frame);
     }
 
