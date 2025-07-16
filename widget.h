@@ -74,6 +74,7 @@ public:
     ~Widget();
 
     void paintEvent(QPaintEvent *);
+    void setOverlayText(const QString &text);  // 设置覆盖文字的方法
 
 private slots:
     void slot_display_error(QString);
@@ -180,6 +181,10 @@ private:
     bool isActive;   // 标记是否已激活（首次点击按钮后启动定时器）
     bool is_camera_opened = false;
     bool cleanup_flag = false;
+
+    // 添加时间更新定时器
+    QTimer *time_update_timer;
+    QString overlay_text;  // 可自定义的覆盖文字
 };
 
 #endif // WIDGET_H

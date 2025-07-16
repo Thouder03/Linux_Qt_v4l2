@@ -50,6 +50,7 @@ Widget::Widget(QWidget *parent)
     , cam_vd(nullptr)
     , live_timer(nullptr)
     , replay_timer(nullptr)
+    , time_update_timer(nullptr)  // 初始化时间更新定时器
     , image(nullptr)
     , cam_raw_buf(nullptr)
     , cam_rgb_buf(nullptr)
@@ -57,6 +58,7 @@ Widget::Widget(QWidget *parent)
     , is_replaying(false)
     , is_paused(false)
     , replay_frame_index(0)
+    , overlay_text("华迪505实训室")  // 默认覆盖文字
 {
     ui->setupUi(this);
 
@@ -89,6 +91,13 @@ Widget::Widget(QWidget *parent)
     // 连接信号槽
     setupConnections();
 
+    // 初始化时间更新定时器
+//    time_update_timer = new QTimer(this);
+//    connect(time_update_timer, &QTimer::timeout, this, [this]() {
+//        update(); // 触发重绘以更新时间显示
+//    });
+//    time_update_timer->start(1000); // 每秒更新一次
+
     // 创建录制目录
     QDir dir;
     if (!dir.exists(RECORD_DIR)) {
@@ -108,6 +117,9 @@ Widget::Widget(QWidget *parent)
 
 Widget::~Widget()
 {
+    if (time_update_timer) {
+        time_update_timer->stop();
+    }
     cleanup_resources();
     delete ui;
 }
@@ -120,7 +132,7 @@ void Widget::setupUI()
     btn_replay = new QPushButton("Replay", this);
     btn_pause = new QPushButton("Pause", this);
     btn_stop_replay = new QPushButton("Stop", this);
-    btn_live = new QPushButton("Live", this);
+    btn_live = new QPushButton("Open", this);
 
     // 新的文件选择按钮
     btn_prev_file = new QPushButton("◀", this);
@@ -626,7 +638,43 @@ bool Widget::cleanup_camera()
 void Widget::paintEvent(QPaintEvent *)
 {
     if (image && lbl_video_display) {
-        lbl_video_display->setPixmap(QPixmap::fromImage(*image));
+        // 创建一个QPixmap副本用于绘制文字
+        QPixmap pixmap = QPixmap::fromImage(*image);
+
+        // 在图像上绘制文字和时间
+        QPainter painter(&pixmap);
+        painter.setRenderHint(QPainter::Antialiasing);
+
+        // 设置字体
+        QFont font("Arial", 12, QFont::Bold);
+        painter.setFont(font);
+
+        // 设置文字颜色和背景
+        painter.setPen(QPen(Qt::white, 2));
+
+        // 绘制半透明背景
+        QString displayText = "Video System";
+        QString currentTime = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss");
+        QString combinedText = displayText + "\n" + currentTime;
+
+        QFontMetrics metrics(font);
+        QRect textRect = metrics.boundingRect(QRect(0, 0, pixmap.width(), pixmap.height()),
+                                            Qt::AlignLeft | Qt::AlignTop, combinedText);
+
+        // 调整文字区域，添加一些边距
+        textRect.adjust(-5, -2, 5, 2);
+        textRect.moveTo(8, 8);
+
+        // 绘制半透明黑色背景
+        painter.fillRect(textRect, QColor(0, 0, 0, 128));
+
+        // 绘制文字
+        painter.setPen(Qt::white);
+        painter.drawText(textRect, Qt::AlignLeft | Qt::AlignTop, combinedText);
+
+        painter.end();
+
+        lbl_video_display->setPixmap(pixmap);
     }
 }
 
@@ -842,4 +890,11 @@ void Widget::cleanup_resources()
         delete image;
         image = nullptr;
     }
+}
+
+// 设置覆盖文字的方法：
+void Widget::setOverlayText(const QString &text)
+{
+    overlay_text = text;
+    update(); // 立即更新显示
 }
