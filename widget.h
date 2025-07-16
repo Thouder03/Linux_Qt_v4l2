@@ -40,15 +40,13 @@ QT_END_NAMESPACE
 struct VideoFrame {
     QByteArray data;
     qint64 timestamp;
-    QString overlay_text;        // 保存覆盖文字
-    QString recorded_time;       // 保存录制时的时间字符串
 
     // 默认构造函数
     VideoFrame() : timestamp(0) {}
 
     // 带参数的构造函数
-    VideoFrame(const QByteArray &frameData, qint64 ts, const QString &overlayText, const QString &recordTime)
-        : data(frameData), timestamp(ts), overlay_text(overlayText), recorded_time(recordTime) {}
+    VideoFrame(const QByteArray &frameData, qint64 ts)
+        : data(frameData), timestamp(ts) {}
 };
 
 // 状态枚举

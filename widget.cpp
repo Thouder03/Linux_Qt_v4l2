@@ -501,9 +501,9 @@ void Widget::slot_replay_frame()
     memcpy(cam_rgb_buf, frame.data.constData(), cam_rgb_buf_len);
     *image = QImage(cam_rgb_buf, width, height, QImage::Format_RGB888);
 
-    // 设置当前帧的文字信息用于显示
-    current_replay_overlay_text = frame.overlay_text;
-    current_replay_time = frame.recorded_time;
+    // 根据时间戳计算显示时间
+    current_replay_time = QDateTime::fromMSecsSinceEpoch(frame.timestamp)
+                            .toString("yyyy-MM-dd hh:mm:ss");
 
     // 更新进度条
     progress_slider->setValue(replay_frame_index);
@@ -523,9 +523,9 @@ void Widget::slot_slider_changed(int value)
         memcpy(cam_rgb_buf, frame.data.constData(), cam_rgb_buf_len);
         *image = QImage(cam_rgb_buf, width, height, QImage::Format_RGB888);
 
-        // 设置当前帧的文字信息用于显示
-        current_replay_overlay_text = frame.overlay_text;
-        current_replay_time = frame.recorded_time;
+        // 根据时间戳计算显示时间
+        current_replay_time = QDateTime::fromMSecsSinceEpoch(frame.timestamp)
+                                .toString("yyyy-MM-dd hh:mm:ss");
 
         update_progress_display();
         update();
@@ -742,12 +742,10 @@ void Widget::save_frame_to_record()
 {
     if (!is_recording || recorded_frames.size() >= MAX_FRAMES_IN_MEMORY) return;
 
-    // 创建VideoFrame对象，保存图像数据和文字信息
+    // 创建VideoFrame对象，只保存图像数据和时间戳
     VideoFrame frame;
     frame.data = QByteArray((char*)cam_rgb_buf, cam_rgb_buf_len);
     frame.timestamp = QDateTime::currentMSecsSinceEpoch();
-    frame.overlay_text = overlay_text;  // 保存当前覆盖文字
-    frame.recorded_time = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss");  // 保存录制时间
 
     recorded_frames.append(frame);
 
@@ -765,19 +763,18 @@ bool Widget::save_recording_to_file(const QString &filename)
     QDataStream out(&file);
     out.setVersion(QDataStream::Qt_5_0);
 
-    // 写入头信息 - 增加版本号以支持新格式
+    // 写入头信息 - 版本号改为3，支持文件头文字信息
     out << quint32(0x12345678); // 魔数
-    out << quint32(2); // 版本号改为2，支持文字信息
+    out << quint32(3); // 版本号改为3
     out << quint32(width);
     out << quint32(height);
     out << quint32(recorded_frames.size());
+    out << overlay_text; // 在文件头写入自定义文字
 
-    // 写入帧数据，包括文字信息
+    // 写入帧数据，保存数据和时间戳
     for (const VideoFrame &frame : recorded_frames) {
         out << frame.timestamp;
         out << frame.data;
-        out << frame.overlay_text;      // 写入覆盖文字
-        out << frame.recorded_time;     // 写入录制时间
     }
 
     file.close();
@@ -804,7 +801,7 @@ bool Widget::load_recording_from_file(const QString &filename)
     }
 
     // 检查版本兼容性
-    if (version != 1 && version != 2) {
+    if (version != 1 && version != 2 && version != 3) {
         file.close();
         update_status("Unsupported file version!");
         return false;
@@ -816,6 +813,12 @@ bool Widget::load_recording_from_file(const QString &filename)
         return false;
     }
 
+    // 读取文件头的自定义文字（仅版本3支持）
+    QString file_overlay_text;
+    if (version == 3) {
+        in >> file_overlay_text;
+    }
+
     replay_frames.clear();
     replay_frames.reserve(frame_count);
 
@@ -825,15 +828,11 @@ bool Widget::load_recording_from_file(const QString &filename)
         in >> frame.timestamp;
         in >> frame.data;
 
-        // 如果是版本2，读取文字信息
+        // 版本2的兼容性处理
         if (version == 2) {
-            in >> frame.overlay_text;
-            in >> frame.recorded_time;
-        } else {
-            // 版本1的兼容性处理
-            frame.overlay_text = "Version";  // 默认文字
-            frame.recorded_time = QDateTime::fromMSecsSinceEpoch(frame.timestamp)
-                                    .toString("yyyy-MM-dd hh:mm:ss");
+            QString dummy_overlay_text, dummy_recorded_time;
+            in >> dummy_overlay_text;
+            in >> dummy_recorded_time;
         }
 
         replay_frames.append(frame);
@@ -841,6 +840,14 @@ bool Widget::load_recording_from_file(const QString &filename)
 
     file.close();
     current_replay_file = filename;
+
+    // 保存文件头的自定义文字用于回放显示
+    if (version == 3) {
+        current_replay_overlay_text = file_overlay_text;
+    } else {
+        current_replay_overlay_text = "Legacy File";
+    }
+
     return true;
 }
 
