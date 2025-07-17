@@ -195,6 +195,9 @@ private:
     // 回放时的文字信息
     QString current_replay_overlay_text;  // 当前回放帧的覆盖文字
     QString current_replay_time;          // 当前回放帧的录制时间
+    qint64 replay_start_time;           // 回放开始的系统时间
+    qint64 first_frame_timestamp;       // 第一帧的时间戳
+    bool use_realtime_replay;           // 是否使用实时回放模式
 };
 
 #endif // WIDGET_H

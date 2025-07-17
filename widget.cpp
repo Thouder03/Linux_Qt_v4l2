@@ -439,6 +439,32 @@ void Widget::slot_start_replay()
     is_replaying = true;
     is_paused = false;
     replay_frame_index = 0;
+    use_realtime_replay = true;
+
+    // 初始化实时回放参数
+    if (!replay_frames.isEmpty()) {
+        replay_start_time = QDateTime::currentMSecsSinceEpoch();
+        first_frame_timestamp = replay_frames[0].timestamp;
+
+        // 立即显示第一帧
+        const VideoFrame &frame = replay_frames[0];
+        memcpy(cam_rgb_buf, frame.data.constData(), cam_rgb_buf_len);
+        *image = QImage(cam_rgb_buf, width, height, QImage::Format_RGB888);
+        current_replay_time = QDateTime::fromMSecsSinceEpoch(frame.timestamp)
+                                .toString("yyyy-MM-dd hh:mm:ss");
+        update();
+
+        replay_frame_index = 1; // 下一帧从第二帧开始
+
+        // 计算第一个间隔时间
+        if (replay_frames.size() > 1) {
+            qint64 next_interval = replay_frames[1].timestamp - replay_frames[0].timestamp;
+            next_interval = qBound(qint64(10), next_interval, qint64(1000)); // 限制在10ms-1000ms之间
+            replay_timer->start(next_interval);
+        } else {
+            replay_timer->start(1000 / DEFAULT_FPS); // 只有一帧时使用默认间隔
+        }
+    }
 
     // 设置进度条
     progress_slider->setMaximum(replay_frames.size() - 1);
@@ -451,10 +477,7 @@ void Widget::slot_start_replay()
     btn_stop_replay->setEnabled(true);
     btn_rec->setEnabled(false);
     btn_live->setEnabled(false);
-    is_camera_opened = false;//
-
-    // 启动回放定时器
-    replay_timer->start(1000 / DEFAULT_FPS);
+    is_camera_opened = false;
 
     update_status("Replaying...");
     update_status_indicator();
@@ -471,11 +494,25 @@ void Widget::slot_pause_replay()
         btn_pause->setText("Resume");
         update_status("Paused");
     } else {
-        replay_timer->start(1000 / DEFAULT_FPS);
         btn_pause->setText("Pause");
         update_status("Replaying...");
+
+        // 恢复时重新计算间隔时间
+        if (replay_frame_index < replay_frames.size()) {
+            qint64 time_diff = 1000 / DEFAULT_FPS; // 默认间隔
+
+            if (replay_frame_index > 0 && replay_frame_index < replay_frames.size()) {
+                qint64 current_time = replay_frames[replay_frame_index - 1].timestamp;
+                qint64 next_time = replay_frames[replay_frame_index].timestamp;
+                time_diff = next_time - current_time;
+                time_diff = qBound(qint64(10), time_diff, qint64(1000));
+            }
+
+            replay_timer->start(time_diff);
+        }
     }
 }
+
 
 void Widget::slot_stop_replay()
 {
@@ -511,7 +548,22 @@ void Widget::slot_replay_frame()
 
     replay_frame_index++;
     update();
+
+    // 如果还有下一帧，计算下一个间隔时间
+    if (replay_frame_index < replay_frames.size()) {
+        qint64 current_frame_time = frame.timestamp;
+        qint64 next_frame_time = replay_frames[replay_frame_index].timestamp;
+        qint64 time_diff = next_frame_time - current_frame_time;
+
+        // 限制时间间隔在合理范围内
+        time_diff = qBound(qint64(10), time_diff, qint64(1000)); // 10ms到1000ms之间
+
+        // 重新启动定时器，使用新的间隔时间
+        replay_timer->stop();
+        replay_timer->start(time_diff);
+    }
 }
+
 
 void Widget::slot_slider_changed(int value)
 {
@@ -529,6 +581,18 @@ void Widget::slot_slider_changed(int value)
 
         update_progress_display();
         update();
+
+        // 如果正在播放且未暂停，重新计算下一帧的间隔时间
+        if (!is_paused && replay_frame_index + 1 < replay_frames.size()) {
+            qint64 current_time = frame.timestamp;
+            qint64 next_time = replay_frames[replay_frame_index + 1].timestamp;
+            qint64 time_diff = next_time - current_time;
+            time_diff = qBound(qint64(10), time_diff, qint64(1000));
+
+            replay_timer->stop();
+            replay_timer->start(time_diff);
+            replay_frame_index++; // 准备播放下一帧
+        }
     }
 }
 
