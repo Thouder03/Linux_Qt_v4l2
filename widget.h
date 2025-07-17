@@ -31,23 +31,15 @@
 #include <QDebug>
 #include <QThread>
 #include <QPainter>
+#include <QThread>
+#include <QMutex>
+#include <QWaitCondition>
 #include "videodevice.h"
+#include "recordingthread.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class Widget; }
 QT_END_NAMESPACE
-
-struct VideoFrame {
-    QByteArray data;
-    qint64 timestamp;
-
-    // 默认构造函数
-    VideoFrame() : timestamp(0) {}
-
-    // 带参数的构造函数
-    VideoFrame(const QByteArray &frameData, qint64 ts)
-        : data(frameData), timestamp(ts) {}
-};
 
 // 状态枚举
 enum class DeviceStatus {
@@ -55,7 +47,6 @@ enum class DeviceStatus {
     RECORDING,   // 绿色 - 录制
     REPLAYING    // 蓝色 - 视频文件回放
 };
-
 class StatusIndicator : public QWidget
 {
     Q_OBJECT
@@ -96,7 +87,9 @@ private slots:
     void slot_live_capture();
     void slot_prev_file();
     void slot_next_file();
-
+    void onRecordingStopped(const QVector<VideoFrame> &frames);
+signals:
+    void frameReady(const QByteArray &frameData, qint64 timestamp);
 private:
     Ui::Widget *ui;
 
@@ -177,11 +170,7 @@ private:
     // 新增方法声明
     void update_file_display();
 
-    // 常量
-    static const QString RECORD_DIR;
-    static const QString RECORD_EXTENSION;
-    static const int DEFAULT_FPS = 30;
-    static const int MAX_FRAMES_IN_MEMORY = 18000; // 30fps * 10分钟
+    int REC_FPS;
 
     Qt::GlobalColor currentColor;
     bool isVisible;  // 控制是否显示颜色
@@ -190,11 +179,16 @@ private:
     bool cleanup_flag = false;
 
     // 添加时间更新定时器
-    QTimer *time_update_timer;
     QString overlay_text;  // 可自定义的覆盖文字
-    // 回放时的文字信息
+    // 回放时
     QString current_replay_overlay_text;  // 当前回放帧的覆盖文字
     QString current_replay_time;          // 当前回放帧的录制时间
+    qint64 replay_start_time;           // 回放开始的系统时间
+    qint64 first_frame_timestamp;       // 第一帧的时间戳
+    bool use_realtime_replay;           // 是否使用实时回放模式
+
+    RecordingThread *recording_thread;
+
 };
 
 #endif // WIDGET_H

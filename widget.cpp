@@ -1,8 +1,7 @@
 #include "widget.h"
 #include "ui_widget.h"
 
-const QString Widget::RECORD_DIR = "recordings";
-const QString Widget::RECORD_EXTENSION = ".vrf"; // Video Recording File
+static int frame_count = 0;
 
 // StatusIndicator 实现
 StatusIndicator::StatusIndicator(QWidget *parent)
@@ -50,7 +49,6 @@ Widget::Widget(QWidget *parent)
     , cam_vd(nullptr)
     , live_timer(nullptr)
     , replay_timer(nullptr)
-    , time_update_timer(nullptr)  // 初始化时间更新定时器
     , image(nullptr)
     , cam_raw_buf(nullptr)
     , cam_rgb_buf(nullptr)
@@ -61,6 +59,7 @@ Widget::Widget(QWidget *parent)
     , overlay_text("华迪505实训室")  // 默认覆盖文字
     , current_replay_overlay_text("")           // 初始化回放文字
     , current_replay_time("")                   // 初始化回放时间
+    , recording_thread(nullptr)
 {
     ui->setupUi(this);
 
@@ -82,6 +81,8 @@ Widget::Widget(QWidget *parent)
 
     // 创建图像对象
     image = new QImage(cam_rgb_buf, width, height, QImage::Format_RGB888);
+    // 创建录制线程
+    recording_thread = new RecordingThread(this);
 
     // 设置UI
     setupUI();
@@ -92,13 +93,6 @@ Widget::Widget(QWidget *parent)
 
     // 连接信号槽
     setupConnections();
-
-    // 初始化时间更新定时器
-//    time_update_timer = new QTimer(this);
-//    connect(time_update_timer, &QTimer::timeout, this, [this]() {
-//        update(); // 触发重绘以更新时间显示
-//    });
-//    time_update_timer->start(1000); // 每秒更新一次
 
     // 创建录制目录
     QDir dir;
@@ -119,9 +113,6 @@ Widget::Widget(QWidget *parent)
 
 Widget::~Widget()
 {
-    if (time_update_timer) {
-        time_update_timer->stop();
-    }
     cleanup_resources();
     delete ui;
 }
@@ -287,23 +278,28 @@ void Widget::setupConnections()
     live_timer = new QTimer(this);
     replay_timer = new QTimer(this);
 
-    // 定时器信号连接保持不变...
-    connect(live_timer, &QTimer::timeout, this, [this]() {
-        if (!is_recording && !is_replaying) {
+    // 连接录制线程信号
+        connect(this, &Widget::frameReady, recording_thread, &RecordingThread::addFrame);
+        connect(recording_thread, &RecordingThread::frameRecorded, this, [this](int count) {
+            update_status(QString("Recording... %1 frames").arg(count));
+        });
+        connect(recording_thread, &RecordingThread::recordingStopped, this, &Widget::onRecordingStopped);
+
+        // 定时器逻辑
+        connect(live_timer, &QTimer::timeout, this, [this]() {
             cam_vd->get_frame((void**)&cam_raw_buf, (size_t*)&cam_raw_buf_len);
             yuyv422_to_rgb888(cam_raw_buf, cam_rgb_buf, width, height);
             *image = QImage(cam_rgb_buf, width, height, QImage::Format_RGB888);
+
+            // 如果正在录制，发送帧数据到录制线程
+            if (is_recording) {
+                QByteArray frameData((char*)cam_rgb_buf, cam_rgb_buf_len);
+                emit frameReady(frameData, QDateTime::currentMSecsSinceEpoch());
+            }
+
             cam_vd->unget_frame();
             update();
-        } else if (is_recording) {
-            cam_vd->get_frame((void**)&cam_raw_buf, (size_t*)&cam_raw_buf_len);
-            yuyv422_to_rgb888(cam_raw_buf, cam_rgb_buf, width, height);
-            *image = QImage(cam_rgb_buf, width, height, QImage::Format_RGB888);
-            save_frame_to_record();
-            cam_vd->unget_frame();
-            update();
-        }
-    });
+        });
 
     connect(replay_timer, &QTimer::timeout, this, &Widget::slot_replay_frame);
 }
@@ -356,14 +352,11 @@ void Widget::slot_start_recording()
         return;
     }
 
-    if (recorded_frames.size() >= MAX_FRAMES_IN_MEMORY) {
-        update_status("Maximum recording length reached!");
-        return;
-    }
-
     is_recording = true;
-    recorded_frames.clear();
     record_start_time = QDateTime::currentDateTime();
+
+    // 启动录制线程
+    recording_thread->startRecording();
 
     btn_rec->setEnabled(false);
     btn_end->setEnabled(true);
@@ -388,6 +381,24 @@ void Widget::slot_stop_recording()
 
     is_recording = false;
 
+    // 停止录制线程
+    recording_thread->stopRecording();
+
+    // 其他UI更新保持不变
+    btn_rec->setEnabled(true);
+    btn_end->setEnabled(false);
+    btn_replay->setEnabled(true);
+    btn_live->setEnabled(true);
+
+    update_status_indicator();
+}
+
+// 新增槽函数处理录制完成
+void Widget::onRecordingStopped(const QVector<VideoFrame> &frames)
+{
+    // 将录制线程的帧数据复制到主线程
+    recorded_frames = frames;
+
     // 保存录制文件
     QString filename = QString("%1/REC_%2%3")
         .arg(RECORD_DIR)
@@ -400,13 +411,6 @@ void Widget::slot_stop_recording()
     } else {
         update_status("Failed to save recording!");
     }
-
-    btn_rec->setEnabled(true);
-    btn_end->setEnabled(false);
-    btn_replay->setEnabled(true);
-    btn_live->setEnabled(true);
-
-    update_status_indicator();
 }
 
 void Widget::slot_start_replay()
@@ -439,6 +443,32 @@ void Widget::slot_start_replay()
     is_replaying = true;
     is_paused = false;
     replay_frame_index = 0;
+    use_realtime_replay = true;
+
+    // 初始化实时回放参数
+    if (!replay_frames.isEmpty()) {
+        replay_start_time = QDateTime::currentMSecsSinceEpoch();
+        first_frame_timestamp = replay_frames[0].timestamp;
+
+        // 立即显示第一帧
+        const VideoFrame &frame = replay_frames[0];
+        memcpy(cam_rgb_buf, frame.data.constData(), cam_rgb_buf_len);
+        *image = QImage(cam_rgb_buf, width, height, QImage::Format_RGB888);
+        current_replay_time = QDateTime::fromMSecsSinceEpoch(frame.timestamp)
+                                .toString("yyyy-MM-dd hh:mm:ss");
+        update();
+
+        replay_frame_index = 1; // 下一帧从第二帧开始
+
+        // 计算第一个间隔时间
+        if (replay_frames.size() > 1) {
+            qint64 next_interval = replay_frames[1].timestamp - replay_frames[0].timestamp;
+            next_interval = qBound(qint64(10), next_interval, qint64(1000)); // 限制在10ms-1000ms之间
+            replay_timer->start(next_interval);
+        } else {
+            replay_timer->start(1000 / DEFAULT_FPS); // 只有一帧时使用默认间隔
+        }
+    }
 
     // 设置进度条
     progress_slider->setMaximum(replay_frames.size() - 1);
@@ -451,14 +481,12 @@ void Widget::slot_start_replay()
     btn_stop_replay->setEnabled(true);
     btn_rec->setEnabled(false);
     btn_live->setEnabled(false);
-    is_camera_opened = false;//
-
-    // 启动回放定时器
-    replay_timer->start(1000 / DEFAULT_FPS);
+    is_camera_opened = false;
 
     update_status("Replaying...");
     update_status_indicator();
 }
+
 
 void Widget::slot_pause_replay()
 {
@@ -471,9 +499,22 @@ void Widget::slot_pause_replay()
         btn_pause->setText("Resume");
         update_status("Paused");
     } else {
-        replay_timer->start(1000 / DEFAULT_FPS);
         btn_pause->setText("Pause");
         update_status("Replaying...");
+
+        // 恢复时重新计算间隔时间
+        if (replay_frame_index < replay_frames.size()) {
+            qint64 time_diff = 1000 / DEFAULT_FPS; // 默认间隔
+
+            if (replay_frame_index > 0 && replay_frame_index < replay_frames.size()) {
+                qint64 current_time = replay_frames[replay_frame_index - 1].timestamp;
+                qint64 next_time = replay_frames[replay_frame_index].timestamp;
+                time_diff = next_time - current_time;
+                time_diff = qBound(qint64(10), time_diff, qint64(1000));
+            }
+
+            replay_timer->start(time_diff);
+        }
     }
 }
 
@@ -511,6 +552,20 @@ void Widget::slot_replay_frame()
 
     replay_frame_index++;
     update();
+
+    // 如果还有下一帧，计算下一个间隔时间
+    if (replay_frame_index < replay_frames.size()) {
+        qint64 current_frame_time = frame.timestamp;
+        qint64 next_frame_time = replay_frames[replay_frame_index].timestamp;
+        qint64 time_diff = next_frame_time - current_frame_time;
+
+        // 限制时间间隔在合理范围内
+        time_diff = qBound(qint64(10), time_diff, qint64(1000)); // 10ms到1000ms之间
+
+        // 重新启动定时器，使用新的间隔时间
+        replay_timer->stop();
+        replay_timer->start(time_diff);
+    }
 }
 
 void Widget::slot_slider_changed(int value)
@@ -529,6 +584,18 @@ void Widget::slot_slider_changed(int value)
 
         update_progress_display();
         update();
+
+        // 如果正在播放且未暂停，重新计算下一帧的间隔时间
+        if (!is_paused && replay_frame_index + 1 < replay_frames.size()) {
+            qint64 current_time = frame.timestamp;
+            qint64 next_time = replay_frames[replay_frame_index + 1].timestamp;
+            qint64 time_diff = next_time - current_time;
+            time_diff = qBound(qint64(10), time_diff, qint64(1000));
+
+            replay_timer->stop();
+            replay_timer->start(time_diff);
+            replay_frame_index++; // 准备播放下一帧
+        }
     }
 }
 
@@ -742,15 +809,16 @@ void Widget::save_frame_to_record()
 {
     if (!is_recording || recorded_frames.size() >= MAX_FRAMES_IN_MEMORY) return;
 
-    // 创建VideoFrame对象，只保存图像数据和时间戳
+    // 创建VideoFrame对象，保存图像数据和时间戳
     VideoFrame frame;
     frame.data = QByteArray((char*)cam_rgb_buf, cam_rgb_buf_len);
     frame.timestamp = QDateTime::currentMSecsSinceEpoch();
 
     recorded_frames.append(frame);
 
-    // 更新状态
-    update_status(QString("Recording... %1 frames").arg(recorded_frames.size()));
+    if (++frame_count % 30 == 0) {  // 每30帧更新一次状态
+        update_status(QString("Recording... %1 frames").arg(recorded_frames.size()));
+    }
 }
 
 bool Widget::save_recording_to_file(const QString &filename)
@@ -942,6 +1010,13 @@ void Widget::cleanup_resources()
     if (image) {
         delete image;
         image = nullptr;
+    }
+    if (recording_thread) {
+        recording_thread->stopRecording();
+        recording_thread->quit();
+        recording_thread->wait();
+        delete recording_thread;
+        recording_thread = nullptr;
     }
 }
 

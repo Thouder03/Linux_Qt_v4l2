@@ -17,10 +17,12 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES += \
     main.cpp \
+    recordingthread.cpp \
     videodevice.cpp \
     widget.cpp
 
 HEADERS += \
+    recordingthread.h \
     videodevice.h \
     widget.h
 
